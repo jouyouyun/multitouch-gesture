@@ -8,6 +8,7 @@
 #include <stropts.h>
 #include <signal.h>
 #include <poll.h>
+#include <math.h>
 
 #include "gesture.h"
 
@@ -25,6 +26,11 @@ static const struct libinput_interface interface = {
 };
 static struct libinput *input_hander = NULL;
 
+static double _dx_unaccel = 0;
+static double _dy_unaccel = 0;
+static double _scale = 0;
+
+
 int
 register_device(char *device, GESTURE_CALLBACK handler, int verbose)
 {
@@ -41,36 +47,18 @@ register_device(char *device, GESTURE_CALLBACK handler, int verbose)
     return 0;
 }
 
-static void
-print_pointer_axis_event(struct libinput_event *ev)
-{
-    struct libinput_event_pointer *p = libinput_event_get_pointer_event(ev);
-    double v = 0, h = 0;
-    const char *vert = "", *horiz = "";
-    if (libinput_event_pointer_has_axis(p, LIBINPUT_POINTER_AXIS_SCROLL_VERTICAL)) {
-        v = libinput_event_pointer_get_axis_value(p, LIBINPUT_POINTER_AXIS_SCROLL_VERTICAL);
-        vert = "*";
-    }
-    if (libinput_event_pointer_has_axis(p, LIBINPUT_POINTER_AXIS_SCROLL_HORIZONTAL)) {
-        h = libinput_event_pointer_get_axis_value(p, LIBINPUT_POINTER_AXIS_SCROLL_HORIZONTAL);
-    }
-    printf("vert: %.2f%s, horiz: %0.2f%s\n", v, vert, h, horiz);
-}
-
-static void
-print_gesture_event(struct libinput_event *ev)
-{
-    struct libinput_event_gesture *g = libinput_event_get_gesture_event(ev);
-    double dx = libinput_event_gesture_get_dx(g);
-    double dy = libinput_event_gesture_get_dy(g);
-    double dx_unaccel = libinput_event_gesture_get_dx_unaccelerated(g);
-    double dy_unaccel = libinput_event_gesture_get_dy_unaccelerated(g);
-
-    printf("fingers (%d) %5.2f/%5.2f (%5.2f/%5.2f unaccelerated)\n",
-           libinput_event_gesture_get_finger_count(g),
-           dx, dy, dx_unaccel, dy_unaccel);
-}
-
+/**
+ * calculation direction
+ * Swipe: (begin -> end)
+ *     _dx_unaccel += dx_unaccel, _dy_unaccel += dy_unaccel;
+ *     filter small movement threshold abs(_dx_unaccel - _dy_unaccel) < 70
+ *     if abs(_dx_unaccel) > abs(_dy_unaccel): _dx_unaccel < 0 ? 'left':'right'
+ *     else: _dy_unaccel < 0 ? 'up':'down'
+ *
+ * Pinch: (begin -> end)
+ *     _scale += 1.0 - scale;
+ *     if _scale != 0: _scale >= 0 ? 'in':'out'
+ **/
 static int
 handle_events()
 {
@@ -80,39 +68,60 @@ handle_events()
     libinput_dispatch(input_hander);
     while ((ev = libinput_get_event(input_hander))) {
         switch (libinput_event_get_type(ev)) {
-        case LIBINPUT_EVENT_POINTER_AXIS:{
-            printf("[Pointer Axis Event]");
-            print_pointer_axis_event(ev);
-            break;
-        }
         case LIBINPUT_EVENT_GESTURE_SWIPE_BEGIN:{
-            printf("[Gesture Swipe Begin]");
-            print_gesture_event(ev);
+            _dx_unaccel = 0.0;
+            _dy_unaccel = 0.0;
             break;
         }
         case LIBINPUT_EVENT_GESTURE_SWIPE_UPDATE:{
-            printf("[Gesture Swipe Update]");
-            print_gesture_event(ev);
+            struct libinput_event_gesture *g = libinput_event_get_gesture_event(ev);
+            double dx_unaccel = libinput_event_gesture_get_dx_unaccelerated(g);
+            double dy_unaccel = libinput_event_gesture_get_dy_unaccelerated(g);
+            _dx_unaccel += dx_unaccel;
+            _dy_unaccel += dy_unaccel;
             break;
         }
         case LIBINPUT_EVENT_GESTURE_SWIPE_END:{
-            printf("[Gesture Swipe End]");
-            print_gesture_event(ev);
+            // filter small movement threshold
+            if (fabs(_dx_unaccel - _dy_unaccel) < 70) {
+                goto swipe_out;
+            }
+
+            struct libinput_event_gesture *g = libinput_event_get_gesture_event(ev);
+            int fingers = libinput_event_gesture_get_finger_count(g);
+            printf("[Swipe Gesture] fingers: %d", fingers);
+            if (fabs(_dx_unaccel) > fabs(_dy_unaccel)) {
+                printf(" direction: %s\n",
+                       fabs(_dx_unaccel) < 0?"left":"right");
+            } else {
+                printf(" direction: %s\n",
+                       fabs(_dy_unaccel) < 0?"up":"down");
+            }
+
+            swipe_out:
+            _dx_unaccel = 0.0;
+            _dy_unaccel = 0.0;
             break;
         }
         case LIBINPUT_EVENT_GESTURE_PINCH_BEGIN:{
-            printf("[Gesture Pinch Begin]");
-            print_gesture_event(ev);
+            _scale = 0.0;
             break;
         }
         case LIBINPUT_EVENT_GESTURE_PINCH_UPDATE:{
-            printf("[Gesture Pinch Update]");
-            print_gesture_event(ev);
+            struct libinput_event_gesture *g = libinput_event_get_gesture_event(ev);
+            double scale = libinput_event_gesture_get_scale(g);
+            _scale += 1.0 - scale;
             break;
         }
         case LIBINPUT_EVENT_GESTURE_PINCH_END:{
-            printf("[Gesture Pinch End]");
-            print_gesture_event(ev);
+            if (_scale == 0.0) {
+                break;
+            }
+            struct libinput_event_gesture *g = libinput_event_get_gesture_event(ev);
+            int fingers = libinput_event_gesture_get_finger_count(g);
+            printf("[Pinch Gesture] fingers: %d", fingers);
+            printf(" direction: %s\n", fabs(_scale) >= 0.0 ? "in":"out");
+            _scale = 0.0;
             break;
         }
         default:
