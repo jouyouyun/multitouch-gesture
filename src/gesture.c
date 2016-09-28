@@ -91,11 +91,9 @@ handle_events()
             int fingers = libinput_event_gesture_get_finger_count(g);
             printf("[Swipe Gesture] fingers: %d", fingers);
             if (fabs(_dx_unaccel) > fabs(_dy_unaccel)) {
-                printf(" direction: %s\n",
-                       fabs(_dx_unaccel) < 0?"left":"right");
+                printf(" direction: %s\n", _dx_unaccel < 0?"left":"right");
             } else {
-                printf(" direction: %s\n",
-                       fabs(_dy_unaccel) < 0?"up":"down");
+                printf(" direction: %s\n", _dy_unaccel < 0?"up":"down");
             }
 
             swipe_out:
@@ -120,7 +118,7 @@ handle_events()
             struct libinput_event_gesture *g = libinput_event_get_gesture_event(ev);
             int fingers = libinput_event_gesture_get_finger_count(g);
             printf("[Pinch Gesture] fingers: %d", fingers);
-            printf(" direction: %s\n", fabs(_scale) >= 0.0 ? "in":"out");
+            printf(" direction: %s\n", _scale >= 0.0 ? "in":"out");
             _scale = 0.0;
             break;
         }
