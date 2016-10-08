@@ -1,4 +1,4 @@
-MultiTouch Gestures
+Touchpad Gestures
 =======================
 
 Recognition gestures via libinput, only emit gestures of fingers > 3.
@@ -17,9 +17,6 @@ Supported Gestures
  + Direction: in or out
  + Fingers: > 3
 
------
-
-* Circle (TODO)
 
 
 Support Actions
