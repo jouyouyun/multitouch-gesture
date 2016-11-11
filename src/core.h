@@ -1,0 +1,18 @@
+#ifndef __GESTURE_CORE_H__
+#define __GESTURE_CORE_H__
+
+#define GESTURE_TYPE_SWIPE 100
+#define GESTURE_TYPE_PINCH 101
+
+// swipe
+#define GESTURE_DIRECTION_UP 10
+#define GESTURE_DIRECTION_DOWN 11
+#define GESTURE_DIRECTION_LEFT 12
+#define GESTURE_DIRECTION_RIGHT 13
+// pinch
+#define GESTURE_DIRECTION_IN 14
+#define GESTURE_DIRECTION_OUT 15
+
+int start_loop();
+
+#endif

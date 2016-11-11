@@ -5,6 +5,8 @@
 #include <poll.h>
 
 #include "utils.h"
+#include "core.h"
+#include "_cgo_export.h"
 
 struct raw_multitouch_event {
     double dx_unaccel, dy_unaccel;
@@ -15,7 +17,43 @@ struct raw_multitouch_event {
 static int is_touchpad(struct libinput_device *dev);
 static const char* get_multitouch_device_node(struct libinput_event *ev);
 
+static void handle_events(struct libinput *li);
+static void handle_gesture_events(struct libinput_event *ev, int type);
+
 static GHashTable *ev_table = NULL;
+
+int
+start_loop()
+{
+    struct libinput *li = open_from_udev("seat0", NULL, 0);
+    if (!li) {
+        return -1;
+    }
+
+    ev_table = g_hash_table_new_full(g_str_hash,
+                                     g_str_equal,
+                                     (GDestroyNotify)g_free,
+                                     (GDestroyNotify)g_free);
+    if (!ev_table) {
+        fprintf(stderr, "Failed to initialize event table\n");
+        libinput_unref(li);
+        return -1;
+    }
+
+    // firstly handle all devices
+    handle_events(li);
+
+    struct pollfd fds;
+    fds.fd = libinput_get_fd(li);
+    fds.events = POLLIN;
+    fds.revents = 0;
+
+    while(poll(&fds, 1, -1) > -1) {
+        handle_events(li);
+    }
+
+    return 0;
+}
 
 static const char*
 get_multitouch_device_node(struct libinput_event *ev)
@@ -102,6 +140,9 @@ handle_gesture_events(struct libinput_event *ev, int type)
         raw->fingers = libinput_event_gesture_get_finger_count(gesture);
         printf("[Pinch] direction: %s, fingers: %d\n",
                raw->scale>= 0?"in":"out", raw->fingers);
+        handleGestureEvent(GESTURE_TYPE_PINCH,
+                           (raw->scale >= 0?GESTURE_DIRECTION_IN:GESTURE_DIRECTION_OUT),
+                           raw->fingers);
         break;
     }
     case LIBINPUT_EVENT_GESTURE_SWIPE_END:
@@ -115,10 +156,16 @@ handle_gesture_events(struct libinput_event *ev, int type)
             // right/left movement
             printf("[Swipe] direction: %s, fingers: %d\n",
                    raw->dx_unaccel < 0?"left":"right", raw->fingers);
+            handleGestureEvent(GESTURE_TYPE_SWIPE,
+                               (raw->dx_unaccel < 0?GESTURE_DIRECTION_LEFT:GESTURE_DIRECTION_RIGHT),
+                               raw->fingers);
         } else {
             // up/down movement
             printf("[Swipe] direction: %s, fingers: %d\n",
                    raw->dy_unaccel < 0?"up":"down", raw->fingers);
+            handleGestureEvent(GESTURE_TYPE_SWIPE,
+                               (raw->dy_unaccel < 0?GESTURE_DIRECTION_UP:GESTURE_DIRECTION_DOWN),
+                               raw->fingers);
         }
         break;
     }
@@ -170,36 +217,5 @@ handle_events(struct libinput *li)
         }
         libinput_event_destroy(ev);
         libinput_dispatch(li);
-    }
-}
-
-int
-main()
-{
-    struct libinput *li = open_from_udev("seat0", NULL, 0);
-    if (!li) {
-        return -1;
-    }
-
-    ev_table = g_hash_table_new_full(g_str_hash,
-                                     g_str_equal,
-                                     (GDestroyNotify)g_free,
-                                     (GDestroyNotify)g_free);
-    if (!ev_table) {
-        fprintf(stderr, "Failed to initialize event table\n");
-        libinput_unref(li);
-        return -1;
-    }
-
-    // firstly handle all devices
-    handle_events(li);
-
-    struct pollfd fds;
-    fds.fd = libinput_get_fd(li);
-    fds.events = POLLIN;
-    fds.revents = 0;
-
-    while(poll(&fds, 1, -1) > -1) {
-        handle_events(li);
     }
 }
