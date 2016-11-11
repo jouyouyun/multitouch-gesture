@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <errno.h>
-#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -71,7 +70,6 @@ open_from_path(char **path, void *user_data, int verbose)
 
     int i = 0;
     for (; path[i] != NULL; i++) {
-        printf("Device path: %s\n", path[i]);
         struct libinput_device *dev = libinput_path_add_device(li, path[i]);
         if (!dev) {
             fprintf(stderr, "Failed to initialize device from %s\n", path[i]);
@@ -80,20 +78,6 @@ open_from_path(char **path, void *user_data, int verbose)
         }
     }
     return li;
-}
-
-void
-free_strv(char **list)
-{
-    if (!list) {
-        return;
-    }
-
-    int i = 0;
-    for (; list[i] != NULL; i++) {
-        free(list[i]);
-    }
-    free(list);
 }
 
 static int
