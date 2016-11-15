@@ -1,11 +1,17 @@
-Touchpad Gestures
+Multitouch Gestures
 =======================
 
-Recognition gestures via libinput, only emit gestures of fingers > 3.
+Recognition gestures via libinput.
 
 
 Supported Gestures
 ----------------------
+
+* Press
+ + Direction: none
+ + Fingers: > 0
+
+-----
 
 * Swipe
  + Direction: up, down, left, right
@@ -16,6 +22,12 @@ Supported Gestures
 * Pinch
  + Direction: in or out
  + Fingers: > 3
+
+-----
+
+* Circle
+ + Direction: clockwise or anticlockwise
+ + Fingers: > 0
 
 
 
