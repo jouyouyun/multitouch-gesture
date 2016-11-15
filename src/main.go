@@ -18,7 +18,7 @@ const (
 )
 
 type Manager struct {
-	// gesture name, gesture action or direction, fingers
+	// name, direction, fingers
 	Event func(int32, int32, int32)
 }
 
@@ -33,12 +33,12 @@ func (*Manager) GetDBusInfo() dbus.DBusInfo {
 }
 
 //export handleGestureEvent
-func handleGestureEvent(name, action, fingers C.int) {
-	dbus.Emit(_m, "Event", int32(name), int32(action), int32(fingers))
+func handleGestureEvent(name, direction, fingers C.int) {
+	dbus.Emit(_m, "Event", int32(name), int32(direction), int32(fingers))
 }
 
 func main() {
-	err := dbus.InstallOnSession(_m)
+	err := dbus.InstallOnSystem(_m)
 	if err != nil {
 		fmt.Println("Install session bus failed:", err)
 		return

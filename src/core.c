@@ -172,6 +172,33 @@ handle_gesture_events(struct libinput_event *ev, int type)
 }
 
 static void
+handle_touch_events(struct libinput_event *ev, int ty)
+{
+    switch (ty) {
+    case LIBINPUT_EVENT_TOUCH_MOTION:
+        printf("Touch motion:\n");
+        break;
+    case LIBINPUT_EVENT_TOUCH_UP:
+        printf("Touch up:\n");
+        return;
+    case LIBINPUT_EVENT_TOUCH_DOWN:
+        printf("Touch down:\n");
+        break;
+    case LIBINPUT_EVENT_TOUCH_FRAME:
+        printf("Touch frame:\n");
+        return;
+    case LIBINPUT_EVENT_TOUCH_CANCEL:
+        printf("Touch cancel:\n");
+        return;
+    }
+
+    struct libinput_event_touch *touch = libinput_event_get_touch_event(ev);
+    double x = libinput_event_touch_get_x(touch);
+    double y = libinput_event_touch_get_y(touch);
+    printf("\tX: %lf, Y: %lf\n", x, y);
+}
+
+static void
 handle_events(struct libinput *li)
 {
     struct libinput_event *ev;
@@ -180,16 +207,15 @@ handle_events(struct libinput *li)
         int type =libinput_event_get_type(ev);
         switch (type) {
         case LIBINPUT_EVENT_DEVICE_ADDED:{
-            printf("Device added\n");
             const char *path = get_multitouch_device_node(ev);
             if (path) {
+                printf("Device added: %s\n", path);
                 g_hash_table_insert(ev_table, g_strdup(path),
-                    g_new0(struct raw_multitouch_event, 1));
+                                    g_new0(struct raw_multitouch_event, 1));
             }
             break;
         }
         case LIBINPUT_EVENT_DEVICE_REMOVED: {
-            printf("Device removed\n");
             const char *path = get_multitouch_device_node(ev);
             if (path) {
                 printf("Will remove '%s' to table\n", path);
@@ -206,12 +232,18 @@ handle_events(struct libinput *li)
             handle_gesture_events(ev, type);
             break;
         }
-        case LIBINPUT_EVENT_POINTER_AXIS:
+        case LIBINPUT_EVENT_POINTER_AXIS:{
+            printf("[Event pointer axis]\n");
+            break;
+        }
         case LIBINPUT_EVENT_TOUCH_MOTION:
         case LIBINPUT_EVENT_TOUCH_UP:
         case LIBINPUT_EVENT_TOUCH_DOWN:
         case LIBINPUT_EVENT_TOUCH_FRAME:
-        case LIBINPUT_EVENT_TOUCH_CANCEL:
+        case LIBINPUT_EVENT_TOUCH_CANCEL:{
+            handle_touch_events(ev, type);
+            break;
+        }
         default:
             break;
         }

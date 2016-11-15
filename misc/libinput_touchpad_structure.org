@@ -1,0 +1,54 @@
+* Touchpad Code Structure
+
+** evdev_dispatch_interface
+
+*** process
+
+1. filter ignore events
+2. handle the special event type
+   EV_ABS: detect whether has mt
+   EV_KEY: handle key
+   EV_SYN: handle state
+
+
+*** suspend
+
+clear state
+
+*** remove
+
+1. remove tap
+2. remove button
+3. remove send events
+4. remove edge scroll
+5. remove gesture
+
+*** destroy
+
+free resources
+
+*** device_added
+
+有其它设备 =added= 时的处理, 主要处理 =keyboard, mouse, trackpoint= 等
+
+*** device_removed
+
+
+*** device_suspended
+
+同 =device removed=
+
+*** device_resumed
+
+同 =device added=
+
+
+*** post_added
+
+Called immediately after the LIBINPUT_EVENT_DEVICE_ADDED event was sent.
+
+NULL
+
+*** toggle_touch
+
+set =ignore_events= state, if equal, nothing to do, else if true clear state
