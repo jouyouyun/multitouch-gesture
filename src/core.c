@@ -233,16 +233,15 @@ handle_touch_events(struct libinput_event *ev, int ty)
     const char *node = udev_device_get_devnode(libinput_device_get_udev_device(libinput_event_get_device(ev)));
     struct libinput_event_touch *touch = libinput_event_get_touch_event(ev);
     uint64_t sec = libinput_event_touch_get_time(touch);
-    uint64_t usec = libinput_event_touch_get_time_usec(touch);
-    if (ty == LIBINPUT_EVENT_TOUCH_UP) {
-        // sum the all events, send gesture event
-        printf("Touch up timestamp: %ld, usec: %ld\n", sec, usec);
-        return;
+    double x = 0;
+    double y = 0;
+    if (ty != LIBINPUT_EVENT_TOUCH_UP) {
+        x = libinput_event_touch_get_x(touch);
+        y = libinput_event_touch_get_y(touch);
     }
-
-    double x = libinput_event_touch_get_x(touch);
-    double y = libinput_event_touch_get_y(touch);
-    printf("\tX: %lf, Y: %lf, Timestamp: %ld, usec: %ld\n", x, y, sec, usec);
+    char *name = g_strdup(node);
+    handleTouchEvents(name, x, y, ty, sec);
+    g_free(name);
 }
 
 static void
