@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <math.h>
 
 #include <glib.h>
@@ -8,19 +9,22 @@
 #include "core.h"
 #include "_cgo_export.h"
 
-struct raw_multitouch_event {
+struct raw_touchpad_event {
     double dx_unaccel, dy_unaccel;
     double scale;
     int fingers;
 };
 
 static int is_touchpad(struct libinput_device *dev);
-static const char* get_multitouch_device_node(struct libinput_event *ev);
+static const char* get_multitouch_device_node(struct libinput_event *ev, int *cap_type);
 
 static void handle_events(struct libinput *li);
+static void handle_device_added(struct libinput_event *ev);
+static void handle_device_removed(struct libinput_event *ev);
 static void handle_gesture_events(struct libinput_event *ev, int type);
 
-static GHashTable *ev_table = NULL;
+static GHashTable *tp_table = NULL;
+static GHashTable *ts_table = NULL;
 
 int
 start_loop()
@@ -30,12 +34,23 @@ start_loop()
         return -1;
     }
 
-    ev_table = g_hash_table_new_full(g_str_hash,
+    tp_table = g_hash_table_new_full(g_str_hash,
                                      g_str_equal,
                                      (GDestroyNotify)g_free,
                                      (GDestroyNotify)g_free);
-    if (!ev_table) {
-        fprintf(stderr, "Failed to initialize event table\n");
+    if (!tp_table) {
+        fprintf(stderr, "Failed to initialize touchpad table\n");
+        libinput_unref(li);
+        return -1;
+    }
+
+    ts_table = g_hash_table_new_full(g_str_hash,
+                                     g_str_equal,
+                                     (GDestroyNotify)g_free,
+                                     (GDestroyNotify)g_list_free);
+    if (!ts_table) {
+        fprintf(stderr, "Failed to initialize touchscreen table\n");
+        g_hash_table_destroy(tp_table);
         libinput_unref(li);
         return -1;
     }
@@ -56,13 +71,15 @@ start_loop()
 }
 
 static const char*
-get_multitouch_device_node(struct libinput_event *ev)
+get_multitouch_device_node(struct libinput_event *ev, int *cap_type)
 {
     struct libinput_device *dev = libinput_event_get_device(ev);
     if (libinput_device_has_capability(dev, LIBINPUT_DEVICE_CAP_TOUCH)) {
+        *cap_type = LIBINPUT_DEVICE_CAP_TOUCH;
         goto out;
     } else if (libinput_device_has_capability(dev, LIBINPUT_DEVICE_CAP_POINTER) &&
                is_touchpad(dev)) {
+        *cap_type = LIBINPUT_DEVICE_CAP_POINTER;
         goto out;
     } else {
         return NULL;
@@ -80,6 +97,41 @@ is_touchpad(struct libinput_device *dev)
     return (cnt > 0);
 }
 
+static void
+handle_device_added(struct libinput_event *ev)
+{
+    int cap = 0;
+    const char *path = get_multitouch_device_node(ev, &cap);
+    if (!path) {
+        return;
+    }
+
+    printf("Device added: %s\n", path);
+    if (cap == LIBINPUT_DEVICE_CAP_POINTER) {
+        g_hash_table_insert(tp_table, g_strdup(path),
+                            g_new0(struct raw_touchpad_event, 1));
+    } else {
+        g_hash_table_insert(ts_table, g_strdup(path),
+                            g_new0(GList, 1));
+    }
+}
+
+static void
+handle_device_removed(struct libinput_event *ev)
+{
+    int cap = 0;
+    const char *path = get_multitouch_device_node(ev, &cap);
+    if (!path) {
+        return;
+    }
+
+    printf("Will remove '%s' to table\n", path);
+    if (cap == LIBINPUT_DEVICE_CAP_POINTER) {
+        g_hash_table_remove(tp_table, path);
+    } else {
+        g_hash_table_remove(ts_table, path);
+    }
+}
 
 /**
  * calculation direction
@@ -103,7 +155,7 @@ handle_gesture_events(struct libinput_event *ev, int type)
     }
 
     const char *node = udev_device_get_devnode(libinput_device_get_udev_device(dev));
-    struct raw_multitouch_event *raw = g_hash_table_lookup(ev_table, node);
+    struct raw_touchpad_event *raw = g_hash_table_lookup(tp_table, node);
     if (!raw) {
         fprintf(stderr, "Not found '%s' in table\n", node);
         return ;
@@ -174,28 +226,23 @@ handle_gesture_events(struct libinput_event *ev, int type)
 static void
 handle_touch_events(struct libinput_event *ev, int ty)
 {
-    switch (ty) {
-    case LIBINPUT_EVENT_TOUCH_MOTION:
-        printf("Touch motion:\n");
-        break;
-    case LIBINPUT_EVENT_TOUCH_UP:
-        printf("Touch up:\n");
-        return;
-    case LIBINPUT_EVENT_TOUCH_DOWN:
-        printf("Touch down:\n");
-        break;
-    case LIBINPUT_EVENT_TOUCH_FRAME:
-        printf("Touch frame:\n");
-        return;
-    case LIBINPUT_EVENT_TOUCH_CANCEL:
-        printf("Touch cancel:\n");
+    if (ty == LIBINPUT_EVENT_TOUCH_FRAME || ty == LIBINPUT_EVENT_TOUCH_CANCEL) {
         return;
     }
 
+    const char *node = udev_device_get_devnode(libinput_device_get_udev_device(libinput_event_get_device(ev)));
     struct libinput_event_touch *touch = libinput_event_get_touch_event(ev);
+    uint64_t sec = libinput_event_touch_get_time(touch);
+    uint64_t usec = libinput_event_touch_get_time_usec(touch);
+    if (ty == LIBINPUT_EVENT_TOUCH_UP) {
+        // sum the all events, send gesture event
+        printf("Touch up timestamp: %ld, usec: %ld\n", sec, usec);
+        return;
+    }
+
     double x = libinput_event_touch_get_x(touch);
     double y = libinput_event_touch_get_y(touch);
-    printf("\tX: %lf, Y: %lf\n", x, y);
+    printf("\tX: %lf, Y: %lf, Timestamp: %ld, usec: %ld\n", x, y, sec, usec);
 }
 
 static void
@@ -207,20 +254,10 @@ handle_events(struct libinput *li)
         int type =libinput_event_get_type(ev);
         switch (type) {
         case LIBINPUT_EVENT_DEVICE_ADDED:{
-            const char *path = get_multitouch_device_node(ev);
-            if (path) {
-                printf("Device added: %s\n", path);
-                g_hash_table_insert(ev_table, g_strdup(path),
-                                    g_new0(struct raw_multitouch_event, 1));
-            }
+            handle_device_added(ev);
             break;
         }
         case LIBINPUT_EVENT_DEVICE_REMOVED: {
-            const char *path = get_multitouch_device_node(ev);
-            if (path) {
-                printf("Will remove '%s' to table\n", path);
-                g_hash_table_remove(ev_table, path);
-            }
             break;
         }
         case LIBINPUT_EVENT_GESTURE_PINCH_BEGIN:
